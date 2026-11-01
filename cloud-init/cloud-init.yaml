@@ -1,0 +1,78 @@
+#cloud-config
+
+# 1. Create the docker group early so the testpress user can be added to it
+groups:
+  - docker
+
+# 2. Create the non-root user 'testpress' and grant Docker + sudo access
+users:
+  - default
+  - name: testpress
+    gecos: Testpress Application User
+    shell: /bin/bash
+    primary_group: testpress
+    groups: [docker, sudo]
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: true
+
+# 3. Update apt package index and install required packages
+package_update: true
+package_upgrade: false
+packages:
+  - docker.io
+  - git
+  - curl
+  - ffmpeg
+
+# 4. Write application environment file and systemd unit file (Bonus Challenge included)
+write_files:
+  - path: /opt/testpress/app.env
+    permissions: '0640'
+    owner: root:root
+    content: |
+      APP_NAME=TestpressApp
+      APP_ENV=production
+      PORT=8080
+      LOG_LEVEL=info
+
+  - path: /etc/systemd/system/testpress-app.service
+    permissions: '0644'
+    owner: root:root
+    content: |
+      [Unit]
+      Description=Testpress Dockerized HTTP Application
+      After=network-online.target docker.service
+      Wants=network-online.target
+      Requires=docker.service
+
+      [Service]
+      Type=simple
+      User=testpress
+      Group=docker
+      WorkingDirectory=/opt/testpress
+      EnvironmentFile=/opt/testpress/app.env
+      Restart=always
+      RestartSec=5
+      # Clean up any leftover container with the same name before starting
+      ExecStartPre=-/usr/bin/docker rm -f testpress-web
+      # Run lightweight HTTP server returning "Hello from Testpress!" with a built-in Docker healthcheck
+      ExecStart=/usr/bin/docker run --rm --name testpress-web \
+        --env-file /opt/testpress/app.env \
+        -p 8080:5678 \
+        --health-cmd="wget -qO- http://localhost:5678/ || exit 1" \
+        --health-interval=10s \
+        --health-timeout=3s \
+        --health-retries=3 \
+        hashicorp/http-echo:latest -text="Hello from Testpress!"
+      ExecStop=/usr/bin/docker stop testpress-web
+
+      [Install]
+      WantedBy=multi-user.target
+
+# 5. Finalize permissions and start services
+runcmd:
+  - chown -R testpress:testpress /opt/testpress
+  - systemctl daemon-reload
+  - systemctl enable --now docker
+  - systemctl pull-check || docker pull hashicorp/http-echo:latest
+  - systemctl enable --now testpress-app.service
