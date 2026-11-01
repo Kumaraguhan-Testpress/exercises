@@ -1,0 +1,32 @@
+services:
+  minio-primary:
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z-cpuv1
+    container_name: minio-primary
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: admin123
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_primary_data:/data
+
+  minio-secondary:
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z-cpuv1
+    container_name: minio-secondary
+    restart: unless-stopped
+    ports:
+      - "9002:9000"
+      - "9003:9001"
+    environment:
+      MINIO_ROOT_USER: admin2
+      MINIO_ROOT_PASSWORD: admin123456
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_secondary_data:/data
+
+volumes:
+  minio_primary_data:
+  minio_secondary_data:
